@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AniScanner - اسکنر SNI و IP</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- آیکون‌ها (اختیاری) - می‌توانید از favicon هم استفاده کنید -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/logo.png') }}">
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="logo-area">
+            <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="AniScanner" onerror="this.style.display='none'">
+            <h1>🔍 AniScanner</h1>
+        </div>
+        <div class="telegram-area">
+            <a href="https://t.me/aniartx" target="_blank" class="telegram-link-minimal">
+                <span>📡</span> @aniartx
+            </a>
+        </div>
+    </div>
+
+    <!-- بقیه محتوای HTML همانند قبل، بدون تغییر (به جز مسیرهای استاتیک) -->
+    <div class="flex-row">
+        <div class="panel">
+            <label>📂 آپلود فایل (txt / json)</label>
+            <input type="file" id="fileInput" accept=".txt,.json,application/json,text/plain" multiple>
+            <label>✏️ ورودی (هر خط یک هدف)</label>
+            <textarea id="ipListInput" rows="5" placeholder="مثال:&#10;cloudflare.com&#10;1.1.1.1&#10;8.8.8.8:google.com&#10;192.168.1.1-192.168.1.10&#10;127.0.0.1/30"></textarea>
+            <div class="small-note">🔹 دامنه | IP | IP:SNI | رنج | CIDR | همچنین پشتیبانی از فایل‌های JSON</div>
+            <button id="parseBtn">📋 بارگذاری لیست</button>
+        </div>
+        <div class="panel">
+            <label>⚙️ تنظیمات اسکن</label>
+            <label>🔢 تعداد همزمانی</label>
+            <input type="number" id="concurrency" value="10" min="1" max="50">
+            <label>⏱️ تایم‌اوت (ms)</label>
+            <input type="number" id="timeout" value="2000" min="300" step="100">
+            <div class="button-group">
+                <button id="startScanBtn" class="btn-success" style="flex:1">▶ شروع اسکن</button>
+                <button id="stopScanBtn" class="btn-danger" style="flex:1" disabled>⏹ توقف</button>
+                <button id="downloadBtn" style="flex:1">📥 دانلود نتایج</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="metrics-wrapper">
+        <div class="metrics-title">📊 LIVE METRICS</div>
+        <div class="metrics-grid">
+            <div class="metric-card total"><div class="metric-label">📋 تعداد کل</div><div class="metric-number"><span id="totalCount">0</span></div></div>
+            <div class="metric-card scanned"><div class="metric-label">⚙️ اسکن شده</div><div class="metric-number"><span id="scannedCount">0</span></div></div>
+            <div class="metric-card success"><div class="metric-label">✅ موفق</div><div class="metric-number"><span id="successCount">0</span></div></div>
+            <div class="metric-card fail"><div class="metric-label">❌ ناموفق</div><div class="metric-number"><span id="failCount">0</span></div></div>
+        </div>
+    </div>
+
+    <div class="progress-container"><div class="progress-fill" id="progressFill">0%</div></div>
+
+    <h3>✅ نتایج موفق</h3>
+    <div style="overflow-x: auto;"><table id="resultTable"><thead><tr><th>SNI (دامنه)</th><th>آی‌پی</th><th>زمان (ms)</th><th>وضعیت</th></tr></thead><tbody></tbody></table></div>
+
+    <div class="log-area" id="logArea"><div>[سیستم] آماده | منتظر دستور...</div></div>
+    <div class="footer">
+        <span>⚡ اسکن در سرور اجرا می‌شود - بستن مرورگر تأثیری ندارد</span>
+        <span class="version">نسخه v1.0</span>
+    </div>
+</div>
+
+<div id="downloadModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" id="closeModal">&times;</span>
+        <h3>📥 انتخاب حالت ذخیره</h3>
+        <div style="text-align: right; padding: 10px;">
+            <p style="margin: 10px 0; color: #065f46;">🔘 <strong>حالت ساده:</strong><br>فقط IP (هر خط یک آی‌پی)</p>
+            <p style="margin: 10px 0; color: #065f46;">🔘 <strong>حالت پیشرفته:</strong><br>IP (SNI) - Ping: Xms, Status: OPEN</p>
+        </div>
+        <div class="modal-buttons">
+            <button id="simpleModeBtn">📄 ساده (فقط IP)</button>
+            <button id="advancedModeBtn">📊 پیشرفته (جزئیات کامل)</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // (کد جاوااسکریپت قبلی، بدون تغییر)
+    let currentDownloadMode = null;
+    function log(msg, color="#86efac") { const logDiv = document.getElementById("logArea"); const p = document.createElement("div"); p.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`; p.style.color = color; logDiv.appendChild(p); logDiv.scrollTop = logDiv.scrollHeight; }
+    function showError(msg) { const logDiv = document.getElementById("logArea"); const p = document.createElement("div"); p.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ ${msg}`; p.style.color = "#fca5a5"; logDiv.appendChild(p); logDiv.scrollTop = logDiv.scrollHeight; }
+    function updateLiveLogs(successList, failList) { const logDiv = document.getElementById("logArea"); const systemLogs = []; for(let child of logDiv.children) { if(child.innerHTML.includes("[سیستم]") || child.innerHTML.includes("✅") || child.innerHTML.includes("📋") || child.innerHTML.includes("🚀") || child.innerHTML.includes("🏁") || child.innerHTML.includes("❌")) { systemLogs.push(child); } } logDiv.innerHTML = ""; systemLogs.forEach(l => logDiv.appendChild(l)); for(let s of successList.slice(-10)) { const p = document.createElement("div"); p.innerHTML = `[${new Date().toLocaleTimeString()}] ✅ موفق | ${s.sni || s.ip} → ${s.ip} (${s.ping}ms)`; p.style.color = "#86efac"; p.className = "live-log success-log"; logDiv.appendChild(p); } for(let f of failList.slice(-10)) { const p = document.createElement("div"); p.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ ناموفق | ${f.sni || f.ip}`; p.style.color = "#fca5a5"; p.className = "live-log fail-log"; logDiv.appendChild(p); } logDiv.scrollTop = logDiv.scrollHeight; while(logDiv.children.length > 150) logDiv.removeChild(logDiv.firstChild); }
+    async function loadList() { const rawText = document.getElementById("ipListInput").value.trim(); if (rawText.startsWith('[') && rawText.endsWith(']')) { showError("این متن توسط سیستم ایجاد شده است. لطفاً یا فایل آپلود کنید یا آی‌پی را دستی وارد کنید."); return; } if (!rawText) { showError("لطفاً آی‌پی‌ها را وارد کنید"); return; } const response = await fetch("/api/parse", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({text: rawText}) }); const data = await response.json(); if (data.targets && data.targets.length > 0) { await fetch("/api/load", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({targets: data.targets}) }); log(`📋 بارگذاری شد: ${data.count} هدف از متن وارد شده`, "#86efac"); updateStatus(); } else { showError("هیچ آی‌پی معتبری در متن وارد شده یافت نشد"); } }
+    async function startScan() { const concurrency = document.getElementById("concurrency").value; const timeout = document.getElementById("timeout").value; await fetch("/api/start", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({concurrency: parseInt(concurrency), timeout: parseInt(timeout)}) }); log(`🚀 شروع اسکن | همزمانی ${concurrency} | تایم‌اوت ${timeout}ms`, "#86efac"); updateStatus(); }
+    async function stopScan() { await fetch("/api/stop", {method: "POST"}); log("⏸ توقف اسکن", "#fcd34d"); updateStatus(); }
+    async function downloadFile(mode) { const response = await fetch("/api/download", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({mode: mode}) }); if(response.status === 404) { showError("لیست نتایج خالی است! ابتدا اسکن را انجام دهید."); return false; } if(response.ok) { const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = mode === 'simple' ? "clean_ips.txt" : "detailed_results.txt"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); log(`📥 دانلود در حالت ${mode === 'simple' ? 'ساده (فقط IP)' : 'پیشرفته (جزئیات کامل)'}`, "#86efac"); return true; } else { showError("خطا در دانلود فایل"); return false; } }
+    async function checkAndDownload() { const statusRes = await fetch("/api/status"); const statusData = await statusRes.json(); if(statusData.results.length === 0) { showError("لیست نتایج خالی است! ابتدا اسکن را انجام دهید تا آی‌پی‌های موفقی وجود داشته باشد."); return; } document.getElementById("downloadModal").style.display = "block"; }
+    async function uploadFiles(files) { const formData = new FormData(); for(let file of files) { formData.append('files', file); } const response = await fetch("/api/upload_files", { method: "POST", body: formData }); const data = await response.json(); if(data.targets && data.targets.length > 0) { await fetch("/api/load", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({targets: data.targets}) }); log(`📁 بارگذاری شد: ${data.count} هدف از فایل‌ها`, "#86efac"); document.getElementById("ipListInput").value = `[${data.count} هدف بارگذاری شد]`; updateStatus(); } else { showError("هیچ آی‌پی معتبری در فایل‌ها یافت نشد"); } }
+    async function updateStatus() { const res = await fetch("/api/status"); const data = await res.json(); document.getElementById("totalCount").innerText = data.total; document.getElementById("scannedCount").innerText = data.scanned; document.getElementById("successCount").innerText = data.success; document.getElementById("failCount").innerText = data.fail; const percent = data.total ? Math.round((data.scanned / data.total) * 100) : 0; const fill = document.getElementById("progressFill"); fill.style.width = percent + "%"; fill.innerText = percent + "%"; document.getElementById("startScanBtn").disabled = data.scanning; document.getElementById("stopScanBtn").disabled = !data.scanning; document.getElementById("parseBtn").disabled = data.scanning; updateLiveLogs(data.recent_success || [], data.recent_fail || []); const sorted = [...data.results].sort((a,b)=>a.ping - b.ping); const tbody = document.querySelector("#resultTable tbody"); tbody.innerHTML = ""; for(let r of sorted.slice(0, 100)) { const row = tbody.insertRow(); row.insertCell(0).innerText = r.sni || r.ip; row.insertCell(1).innerText = r.ip; row.insertCell(2).innerText = `${r.ping}`; row.insertCell(3).innerHTML = '✔ موفق'; } if(data.scanning && !window._scanningFlag) { log("⏳ اسکن فعال شد...", "#86efac"); window._scanningFlag = true; } else if(!data.scanning && window._scanningFlag) { log(`🏁 پایان اسکن | موفق: ${data.success} | ناموفق: ${data.fail}`, "#86efac"); window._scanningFlag = false; } }
+    document.getElementById("parseBtn").onclick = loadList;
+    document.getElementById("startScanBtn").onclick = startScan;
+    document.getElementById("stopScanBtn").onclick = stopScan;
+    document.getElementById("downloadBtn").onclick = checkAndDownload;
+    document.getElementById("simpleModeBtn").onclick = async () => { document.getElementById("downloadModal").style.display = "none"; await downloadFile("simple"); };
+    document.getElementById("advancedModeBtn").onclick = async () => { document.getElementById("downloadModal").style.display = "none"; await downloadFile("advanced"); };
+    document.getElementById("closeModal").onclick = () => { document.getElementById("downloadModal").style.display = "none"; };
+    window.onclick = (event) => { if (event.target === document.getElementById("downloadModal")) { document.getElementById("downloadModal").style.display = "none"; } };
+    document.getElementById("fileInput").onchange = async (e) => { const files = Array.from(e.target.files); if(files.length > 0) { await uploadFiles(files); } e.target.value = ""; };
+    setInterval(updateStatus, 1000);
+    updateStatus();
+    log("💡 آماده | دامنه، IP، رنج، CIDR و فایل‌های JSON پشتیبانی می‌شود", "#86efac");
+</script>
+</body>
+</html>
