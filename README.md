@@ -3,8 +3,6 @@
 
 **AniScanner** is a powerful tool for scanning port 443 (HTTPS) and checking SNI (Server Name Indication). It supports uploading JSON/TXT files, IP ranges, CIDRs, domains, and custom `IP:SNI` format. The scan runs in the background using a Python Flask server, so closing the browser does **not** stop the scan.
 
-![AniScanner Demo](https://via.placeholder.com/800x400?text=AniScanner+Screenshot) <!-- You can add a real screenshot later -->
-
 ## ✨ Features
 
 - Scan port 443 using WebSocket/TLS handshake (fast and accurate)
