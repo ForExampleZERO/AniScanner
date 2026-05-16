@@ -3,140 +3,213 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AniScanner — Port 443 Scanner</title>
+<title>AniScanner v{{ version }} — Port 443 Scanner</title>
+<link rel="icon" href="{{ url_for('static', filename='logo/logo.png') }}" type="image/png">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 <div class="container">
 
-    <!-- HERO -->
-    <div class="topbar">
-        <div class="hero-card">
-            <div class="hero-icon">🔍</div>
-            <h1>AniScanner</h1>
-            <div class="hero-badge">TCP · TLS · SNI · Certificate · Scoring</div>
-            <p id="heroDesc">Professional Port 443 scanner — TCP connect, TLS handshake, SNI validation, certificate check &amp; smart scoring.</p>
-            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;align-items:center">
-                <a href="https://t.me/aniartx" target="_blank" class="telegram-link">📡 @aniartx</a>
-                <button id="langBtn" class="btn-lang">🌐 FA</button>
+    <!-- ── Header ──────────────────────────────── -->
+    <header class="header">
+        <div class="brand">
+            <div class="brand-logo">
+                <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="AniScanner">
+            </div>
+            <div class="brand-text">
+                <h1>AniScanner</h1>
+                <p id="heroDesc">TCP · TLS · SNI · Certificate · QUIC · Scoring</p>
             </div>
         </div>
-    </div>
+        <div class="header-right">
+            <span class="version-pill">v{{ version }}</span>
+            <a href="https://t.me/aniartx" target="_blank" class="tg-link">
+                <!-- telegram icon inline -->
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
+                @aniartx
+            </a>
+            <button id="langBtn" class="btn-lang">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <span id="langBtnTxt">FA</span>
+            </button>
+        </div>
+    </header>
 
-    <!-- INPUT + CONFIGURATION -->
-    <div class="grid">
+    <!-- ── Main Grid ────────────────────────────── -->
+    <div class="main-grid">
 
-        <!-- Input -->
+        <!-- Input panel -->
         <div class="card">
-            <div class="card-title" id="inputTitle">📂 Input — IP / Range / CIDR / Domain</div>
-            <label id="uploadLabel">Upload TXT file</label>
+            <div class="card-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span id="inputTitle">Input — IP / Range / CIDR / Domain</span>
+            </div>
+            <label class="field-label" id="uploadLabel">Upload TXT file</label>
             <input type="file" id="fileInput" accept=".txt">
-            <label id="manualLabel">Manual input (one per line: IP, range, CIDR, domain)</label>
-            <textarea id="ipListInput" placeholder="1.1.1.1&#10;8.8.8.8&#10;1.1.1.0/24&#10;1.1.1.1-1.1.1.50&#10;cloudflare.com"></textarea>
-            <button id="parseBtn" class="btn-purple">📋 Prepare &amp; Deduplicate</button>
+            <label class="field-label" id="manualLabel">Manual entry (IP · range · CIDR · domain)</label>
+            <textarea id="ipListInput" placeholder="1.1.1.1&#10;8.8.8.8&#10;1.1.1.0/24&#10;1.1.1.1-1.1.1.50&#10;cloudflare.com&#10;1.2.3.4#example.com  # explicit SNI"></textarea>
+            <button id="parseBtn" class="btn btn-purple">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                <span id="prepareBtnTxt">Prepare &amp; Deduplicate</span>
+            </button>
         </div>
 
-        <!-- Configuration -->
+        <!-- Configuration panel -->
         <div class="card">
-            <div class="card-title" id="settingsTitle">⚙ Configuration</div>
+            <div class="card-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>
+                <span id="settingsTitle">Configuration</span>
+            </div>
 
-            <label id="concLabel">Concurrency</label>
+            <label class="field-label" id="concLabel">Concurrency</label>
             <input type="number" id="concurrency" value="30" min="1" max="200">
 
-            <label id="toLabel">Timeout (ms)</label>
+            <label class="field-label" id="toLabel">Timeout (ms)</label>
             <input type="number" id="timeout" value="3000" min="500" step="500">
 
-            <!-- Scan Mode -->
-            <label id="scanModeLabel">Scan Mode</label>
-            <div class="scan-mode-group">
-                <label class="mode-pill">
+            <label class="field-label" id="scanModeLabel">Scan Mode</label>
+            <div class="mode-selector">
+                <label class="mode-option">
                     <input type="radio" name="scanMode" value="TCP" checked>
-                    <span>TCP</span>
+                    <span>
+                        <img src="{{ url_for('static', filename='icons/tcp.svg') }}" class="mode-icon" alt="TCP" onerror="this.style.display='none'">
+                        TCP
+                    </span>
                 </label>
-                <label class="mode-pill">
+                <label class="mode-option">
                     <input type="radio" name="scanMode" value="UDP">
-                    <span>UDP</span>
+                    <span>
+                        <img src="{{ url_for('static', filename='icons/udp.svg') }}" class="mode-icon" alt="UDP" onerror="this.style.display='none'">
+                        UDP
+                    </span>
                 </label>
-                <label class="mode-pill">
+                <label class="mode-option">
                     <input type="radio" name="scanMode" value="BOTH">
-                    <span>BOTH</span>
+                    <span>
+                        <img src="{{ url_for('static', filename='icons/both.svg') }}" class="mode-icon" alt="BOTH" onerror="this.style.display='none'">
+                        BOTH
+                    </span>
                 </label>
             </div>
 
-            <div style="height:14px"></div>
+            <button id="toggleScanBtn" class="btn btn-success" style="margin-bottom:8px">
+                <svg id="scanBtnIcon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span id="scanBtnTxt">Start Scan</span>
+            </button>
 
-            <button id="toggleScanBtn" class="btn-success">▶ Start Scan</button>
-
-            <div class="dl-wrapper">
-                <button id="downloadBtn" class="btn-primary">📥 Export ▾</button>
-                <div id="downloadMenu">
-                    <span class="dl-label">Format</span>
-                    <button id="dlSimpleBtn"  class="dl-option" onclick="downloadResults('simple')">📄 Simple — one IP per line</button>
-                    <button id="dlAdvBtn"     class="dl-option" onclick="downloadResults('advanced')">📊 Advanced — IP · SNI · Ping · TLS · Score</button>
+            <div class="dl-wrap">
+                <button id="downloadBtn" class="btn btn-primary">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span id="dlBtnTxt">Export Results</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left:2px"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="dl-menu" id="downloadMenu">
+                    <span class="dl-menu-label">Choose format</span>
+                    <button class="dl-option" id="dlSimpleBtn" onclick="downloadResults('simple')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Simple — one IP per line
+                    </button>
+                    <button class="dl-option" id="dlAdvBtn" onclick="downloadResults('advanced')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                        Advanced — full data
+                    </button>
                 </div>
             </div>
         </div>
 
-    </div>
+    </div><!-- /main-grid -->
 
-    <!-- STATS -->
-    <div class="stats-grid">
-        <div class="stat-box"><span id="lblTotal">🎯 Total</span><strong id="totalStat">0</strong></div>
-        <div class="stat-box"><span id="lblScanned">🔄 Scanned</span><strong id="scannedStat">0</strong></div>
-        <div class="stat-box"><span id="lblOk">✅ OK</span><strong id="successStat" style="color:#4ade80">0</strong></div>
-        <div class="stat-box"><span id="lblFail">❌ Failed</span><strong id="failStat" style="color:#f87171">0</strong></div>
-    </div>
-
-    <!-- PROGRESS -->
-    <div class="progress-wrapper">
-        <div class="progress-container">
-            <div class="progress-fill" id="progressFill">0%</div>
+    <!-- ── Stats row ─────────────────────────────── -->
+    <div class="stats-row">
+        <div class="stat-box">
+            <div class="stat-box-label">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span id="lblTotal">Total</span>
+            </div>
+            <div class="stat-box-value" id="totalStat" style="color:var(--text)">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-box-label">
+                <!-- activity icon from zip -->
+                <img src="{{ url_for('static', filename='icons/activity.svg') }}" width="12" height="12" style="opacity:0.5;filter:invert(1)" onerror="this.style.display='none'">
+                <span id="lblScanned">Scanned</span>
+            </div>
+            <div class="stat-box-value" id="scannedStat" style="color:var(--accent)">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-box-label">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                <span id="lblOk">Online</span>
+            </div>
+            <div class="stat-box-value" id="successStat" style="color:#34d399">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-box-label">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <span id="lblFail">Dead</span>
+            </div>
+            <div class="stat-box-value" id="failStat" style="color:#f87171">0</div>
         </div>
     </div>
 
-    <!-- RESULTS TABLE -->
-    <div class="card results-card">
-        <div class="section-title">
-            <h3>📊 Scan Results</h3>
-            <span id="resultCount" class="result-count">0 results</span>
+    <!-- ── Progress ──────────────────────────────── -->
+    <div class="progress-wrap">
+        <div class="progress-track">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="progress-meta">
+            <span id="progressLabel">Ready</span>
+            <span id="progressPct">0%</span>
+        </div>
+    </div>
+
+    <!-- ── Results ───────────────────────────────── -->
+    <div class="card">
+        <div class="results-header">
+            <div class="results-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                <span id="resultsTitle">Scan Results</span>
+            </div>
+            <span class="result-count-badge" id="resultCount">0 results</span>
         </div>
 
-        <div class="table-wrapper">
+        <div class="table-wrap">
             <table id="resultTable">
                 <thead>
                     <tr>
                         <th>#</th>
                         <th id="thIp">IP Address</th>
                         <th id="thPing">Ping</th>
-                        <th id="thTcp"  class="col-tcp">TCP</th>
-                        <th id="thUdp"  class="col-udp">UDP</th>
-                        <th id="thTlsVer">TLS Ver</th>
+                        <th id="thTcp" class="col-tcp">TCP</th>
+                        <th id="thUdp" class="col-udp">UDP</th>
+                        <th id="thTlsVer">TLS</th>
                         <th id="thSni">SNI</th>
-                        <th id="thCert">Cert</th>
-                        <th id="thCdn">CDN</th>
-                        <th id="thAsn">ASN</th>
-                        <th id="thProvider">Provider</th>
+                        <th id="thCert">Certificate</th>
+                        <th id="thCdn">CDN / Provider</th>
                         <th id="thLatency">Latency</th>
-                        <th id="thLoss">Loss</th>
                         <th id="thScore">Score</th>
+                        <th id="thVerdict">Verdict</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
             </table>
 
-            <!-- Waiting state -->
             <div class="waiting-state" id="waitingState">
-                <div class="waiting-icon">🔍</div>
+                <div class="waiting-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
                 <p id="waitingTxt">Waiting for scan…</p>
             </div>
         </div>
-
-        <div class="log-area" id="logArea"></div>
     </div>
 
-    <div class="footer" id="footer">⚡ AniScanner v3.2 — TCP · TLS · SNI · Cert · Scoring | @aniartx</div>
+    <!-- ── Footer ───────────────────────────────── -->
+    <div class="footer" id="footer">
+        AniScanner v{{ version }} — TCP · TLS · SNI · QUIC · Scoring &nbsp;|&nbsp; @aniartx
+    </div>
 
-</div>
+</div><!-- /container -->
+
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
