@@ -60,7 +60,7 @@ AniScanner/
 pkg install python
 pip install flask
 
-git clone https://github.com/yourname/AniScanner
+git clone https://github.com/ForExampleZERO/AniScanner
 cd AniScanner
 
 python app.py
