@@ -122,7 +122,7 @@ body::before {
 .brand-logo {
     width: 46px;
     height: 46px;
-    border-radius: 13px;
+    border-radius: 50px;
     overflow: hidden;
     border: 1px solid var(--border-hi);
     box-shadow: var(--glow-blue);
