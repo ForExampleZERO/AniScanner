@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AniScanner — Port 443 Scanner</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="container">
+
+    <!-- HERO -->
+    <div class="topbar">
+        <div class="hero-card">
+            <div class="hero-icon">🔍</div>
+            <h1>AniScanner</h1>
+            <div class="hero-badge">TCP · TLS · SNI · Certificate · Scoring</div>
+            <p id="heroDesc">Professional Port 443 scanner — TCP connect, TLS handshake, SNI validation, certificate check &amp; smart scoring.</p>
+            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;align-items:center">
+                <a href="https://t.me/aniartx" target="_blank" class="telegram-link">📡 @aniartx</a>
+                <button id="langBtn" class="btn-lang">🌐 FA</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INPUT + CONFIGURATION -->
+    <div class="grid">
+
+        <!-- Input -->
+        <div class="card">
+            <div class="card-title" id="inputTitle">📂 Input — IP / Range / CIDR / Domain</div>
+            <label id="uploadLabel">Upload TXT file</label>
+            <input type="file" id="fileInput" accept=".txt">
+            <label id="manualLabel">Manual input (one per line: IP, range, CIDR, domain)</label>
+            <textarea id="ipListInput" placeholder="1.1.1.1&#10;8.8.8.8&#10;1.1.1.0/24&#10;1.1.1.1-1.1.1.50&#10;cloudflare.com"></textarea>
+            <button id="parseBtn" class="btn-purple">📋 Prepare &amp; Deduplicate</button>
+        </div>
+
+        <!-- Configuration -->
+        <div class="card">
+            <div class="card-title" id="settingsTitle">⚙ Configuration</div>
+
+            <label id="concLabel">Concurrency</label>
+            <input type="number" id="concurrency" value="30" min="1" max="200">
+
+            <label id="toLabel">Timeout (ms)</label>
+            <input type="number" id="timeout" value="3000" min="500" step="500">
+
+            <!-- Scan Mode -->
+            <label id="scanModeLabel">Scan Mode</label>
+            <div class="scan-mode-group">
+                <label class="mode-pill">
+                    <input type="radio" name="scanMode" value="TCP" checked>
+                    <span>TCP</span>
+                </label>
+                <label class="mode-pill">
+                    <input type="radio" name="scanMode" value="UDP">
+                    <span>UDP</span>
+                </label>
+                <label class="mode-pill">
+                    <input type="radio" name="scanMode" value="BOTH">
+                    <span>BOTH</span>
+                </label>
+            </div>
+
+            <div style="height:14px"></div>
+
+            <button id="toggleScanBtn" class="btn-success">▶ Start Scan</button>
+
+            <div class="dl-wrapper">
+                <button id="downloadBtn" class="btn-primary">📥 Export ▾</button>
+                <div id="downloadMenu">
+                    <span class="dl-label">Format</span>
+                    <button id="dlSimpleBtn"  class="dl-option" onclick="downloadResults('simple')">📄 Simple — one IP per line</button>
+                    <button id="dlAdvBtn"     class="dl-option" onclick="downloadResults('advanced')">📊 Advanced — IP · SNI · Ping · TLS · Score</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-grid">
+        <div class="stat-box"><span id="lblTotal">🎯 Total</span><strong id="totalStat">0</strong></div>
+        <div class="stat-box"><span id="lblScanned">🔄 Scanned</span><strong id="scannedStat">0</strong></div>
+        <div class="stat-box"><span id="lblOk">✅ OK</span><strong id="successStat" style="color:#4ade80">0</strong></div>
+        <div class="stat-box"><span id="lblFail">❌ Failed</span><strong id="failStat" style="color:#f87171">0</strong></div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="progress-wrapper">
+        <div class="progress-container">
+            <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+    </div>
+
+    <!-- RESULTS TABLE -->
+    <div class="card results-card">
+        <div class="section-title">
+            <h3>📊 Scan Results</h3>
+            <span id="resultCount" class="result-count">0 results</span>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="resultTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th id="thIp">IP Address</th>
+                        <th id="thPing">Ping</th>
+                        <th id="thTcp"  class="col-tcp">TCP</th>
+                        <th id="thUdp"  class="col-udp">UDP</th>
+                        <th id="thTlsVer">TLS Ver</th>
+                        <th id="thSni">SNI</th>
+                        <th id="thCert">Cert</th>
+                        <th id="thCdn">CDN</th>
+                        <th id="thAsn">ASN</th>
+                        <th id="thProvider">Provider</th>
+                        <th id="thLatency">Latency</th>
+                        <th id="thLoss">Loss</th>
+                        <th id="thScore">Score</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+            <!-- Waiting state -->
+            <div class="waiting-state" id="waitingState">
+                <div class="waiting-icon">🔍</div>
+                <p id="waitingTxt">Waiting for scan…</p>
+            </div>
+        </div>
+
+        <div class="log-area" id="logArea"></div>
+    </div>
+
+    <div class="footer" id="footer">⚡ AniScanner v3.2 — TCP · TLS · SNI · Cert · Scoring | @aniartx</div>
+
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
