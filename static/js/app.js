@@ -282,14 +282,40 @@ function triggerSort() {
 }
 
 // ── Scan mode → column visibility ─────────────────
+// Locked config: set at scan start, not changed mid-scan
+let _lockedScanMode = null;
+let _lockedPorts    = null;
+
 function getScanMode() {
+    // During scan, return locked value; otherwise read from UI
+    if (scanning && _lockedScanMode) return _lockedScanMode;
     return document.querySelector('input[name="scanMode"]:checked')?.value || 'TCP';
 }
 
 function getSelectedPorts() {
+    // During scan, return locked value; otherwise read from UI
+    if (scanning && _lockedPorts) return _lockedPorts;
     const checked = document.querySelectorAll('input[name="scanPort"]:checked');
     const ports = Array.from(checked).map(cb => parseInt(cb.value)).filter(Boolean);
     return ports.length ? ports : [443];
+}
+
+function lockConfig() {
+    _lockedScanMode = document.querySelector('input[name="scanMode"]:checked')?.value || 'TCP';
+    const checked = document.querySelectorAll('input[name="scanPort"]:checked');
+    const ports = Array.from(checked).map(cb => parseInt(cb.value)).filter(Boolean);
+    _lockedPorts = ports.length ? ports : [443];
+    // Disable UI during scan
+    document.querySelectorAll('input[name="scanMode"]').forEach(r => r.disabled = true);
+    document.querySelectorAll('input[name="scanPort"]').forEach(cb => cb.disabled = true);
+}
+
+function unlockConfig() {
+    _lockedScanMode = null;
+    _lockedPorts    = null;
+    // Re-enable UI
+    document.querySelectorAll('input[name="scanMode"]').forEach(r => r.disabled = false);
+    document.querySelectorAll('input[name="scanPort"]').forEach(cb => cb.disabled = false);
 }
 
 function applyColumns() {
@@ -301,13 +327,14 @@ function applyColumns() {
 }
 
 document.querySelectorAll('input[name="scanMode"]').forEach(r =>
-    r.addEventListener('change', () => { applyColumns(); triggerSort(); })
+    r.addEventListener('change', () => { if (!scanning) { applyColumns(); triggerSort(); } })
 );
 
 // Port checkbox styling
 document.querySelectorAll('.port-option input').forEach(cb => {
     cb.addEventListener('change', function() {
         this.closest('.port-option').classList.toggle('checked', this.checked);
+
     });
 });
 
@@ -327,7 +354,7 @@ const CDN_ICONS = {
     'ZeroSSL':       '🔑',
 };
 
-// ── Status dot helper ──────────────────────────────
+// ── Status square helper ──────────────────────────────
 // green=open, yellow=filtered, red=closed/dead
 function statusDot(state) {
     // state: 'open' | 'filtered' | 'closed' | 'skip'
@@ -339,12 +366,11 @@ function statusDot(state) {
 // ── Cell renderers ────────────────────────────────
 
 function pingHtml(tcp, latency) {
-    // Prefer multi-probe avg latency if available
-    const ms = latency?.avg ?? tcp?.ms ?? null;
+    // Ping = first TCP connect time (raw ms) — NOT multi-probe avg
+    const ms = tcp?.ms ?? null;
     if (!tcp?.ok || ms === null) return '<span class="badge badge-dash">—</span>';
     const cls = ms <= 100 ? 'ping-good' : ms <= 300 ? 'ping-ok' : ms <= 600 ? 'ping-bad' : 'ping-dead';
-    const detail = latency ? `min:${latency.min} avg:${latency.avg} max:${latency.max}` : '';
-    return `<span class="${cls}" title="${detail}">${ms}ms</span>`;
+    return `<span class="${cls}" title="TCP connect time">${ms}ms</span>`;
 }
 
 function tcpDotsHtml(tcp, tcpPorts, scannedPorts) {
@@ -430,11 +456,14 @@ function cdnHtml(provider) {
 }
 
 function latencyHtml(tls, latency) {
-    // Show multi-probe latency if available, else TLS RTT
-    const ms = latency?.avg ?? tls?.ms ?? null;
-    if (!ms) return '<span class="badge badge-dash">—</span>';
+    // Show ONLY multi-probe TCP latency (avg of 3 probes) — never TLS RTT
+    // This ensures Latency differs from Ping (which shows first TCP connect ms)
+    if (!latency || latency.avg === null || latency.avg === undefined) {
+        return '<span class="badge badge-dash">—</span>';
+    }
+    const ms = latency.avg;
     const cls = ms <= 100 ? 'ping-good' : ms <= 300 ? 'ping-ok' : ms <= 600 ? 'ping-bad' : 'ping-dead';
-    const detail = latency ? `min:${latency.min} avg:${latency.avg} max:${latency.max}` : '';
+    const detail = `min:${latency.min} avg:${latency.avg} max:${latency.max} loss:${latency.loss}%`;
     return `<span class="${cls}" title="${detail}">${ms}ms</span>`;
 }
 
@@ -656,12 +685,16 @@ async function prepareList() {
     if (scanning) { showToast(t().stopFirst, 'warn'); return []; }
     const text = $id('ipListInput').value.trim();
     if (!text)  { showToast(t().listEmpty, 'warn'); return []; }
+    const parseBtn = $id('parseBtn');
+    if (parseBtn) { parseBtn.disabled = true; parseBtn.style.opacity = '0.6'; }
+    showToast('⏳ Parsing IPs…', 'info');
     try {
         const resp = await fetch('/api/parse', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ ips: text }),
         });
+        if (!resp.ok) throw new Error(`Server error ${resp.status}`);
         const data = await resp.json();
         entries = data.entries;
         $id('ipListInput').value =
@@ -671,6 +704,7 @@ async function prepareList() {
         scanState    = 'idle';
         results      = [];
         filteredSorted = [];
+        _seenIPs     = new Set();
         updateStats();
         $id('progressBar').style.width = '0%';
         $id('waitingState').style.display = 'flex';
@@ -679,20 +713,35 @@ async function prepareList() {
         updateFilterCount();
         showToast(t().prepared(entries.length), 'info');
         return entries;
-    } catch {
-        showToast(t().serverErr, 'error');
+    } catch(err) {
+        showToast(`❌ ${err.message || t().serverErr}`, 'error');
         return [];
+    } finally {
+        if (parseBtn) { parseBtn.disabled = false; parseBtn.style.opacity = ''; }
     }
 }
 
 // ── SSE stream ────────────────────────────────────
+let _seenIPs = new Set(); // dedup guard: don't count same IP twice
+let _streamErrorCount = 0;
+let _streamRetryTimer = null;
+
 function connectStream(sid) {
     if (evtSource) evtSource.close();
+    _streamErrorCount = 0;
     evtSource = new EventSource(`/api/scan/stream?session_id=${sid}`);
+    evtSource.onopen = () => {
+        _streamErrorCount = 0;
+        if (_streamRetryTimer) { clearTimeout(_streamRetryTimer); _streamRetryTimer = null; }
+    };
     evtSource.onmessage = e => {
+        _streamErrorCount = 0;
         const msg = JSON.parse(e.data);
         if (msg.type === 'result') {
             const r = msg.data;
+            // Dedup: skip if we already counted this IP
+            if (_seenIPs.has(r.ip)) return;
+            _seenIPs.add(r.ip);
             scannedCount++;
             const alive = r.tcp?.ok || r.tls?.ok || r.udp?.ok;
             if (alive) successCount++; else failCount++;
@@ -704,7 +753,48 @@ function connectStream(sid) {
             finishScan();
         }
     };
-    evtSource.onerror = () => {};
+    evtSource.onerror = () => {
+        _streamErrorCount++;
+        if (_streamErrorCount === 1) {
+            showToast('⚠️ Connection interrupted — retrying…', 'warn');
+        }
+        if (_streamErrorCount >= 5) {
+            // Too many errors, give up and show clear message
+            evtSource.close();
+            evtSource = null;
+            if (scanning) {
+                showToast('❌ Stream connection lost. Scan may still be running on server.', 'error');
+                // Try to fetch current status as fallback
+                _streamRetryTimer = setTimeout(() => _tryFetchStatus(sid), 2000);
+            }
+        }
+    };
+}
+
+async function _tryFetchStatus(sid) {
+    try {
+        const resp = await fetch(`/api/scan/status?session_id=${sid}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.status === 'running') {
+            showToast('🔄 Reconnecting stream…', 'info');
+            connectStream(sid);
+        } else if (data.status === 'done' || data.status === 'stopped') {
+            // Load final results
+            const newResults = data.results || [];
+            for (const r of newResults) {
+                if (!_seenIPs.has(r.ip)) {
+                    _seenIPs.add(r.ip);
+                    results.push(r);
+                }
+            }
+            scannedCount = data.scanned || results.length;
+            successCount = results.filter(r => r.tcp?.ok || r.tls?.ok || r.udp?.ok).length;
+            failCount    = scannedCount - successCount;
+            updateStats(); triggerSort();
+            finishScan();
+        }
+    } catch { }
 }
 
 // ── Start scan ────────────────────────────────────
@@ -712,14 +802,24 @@ async function startScan(list) {
     if (scanning || !list.length) return;
     const concurrency = parseInt($id('concurrency').value) || 30;
     const timeout     = parseInt($id('timeout').value)     || 3000;
+    // Lock config BEFORE reading values — these will be frozen for entire scan
+    lockConfig();
     const scan_mode   = getScanMode();
     const ports       = getSelectedPorts();
+    // Show loading state immediately
+    const btn = $id('toggleScanBtn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    showToast('⏳ Connecting to server…', 'info');
     try {
         const resp = await fetch('/api/scan/start', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entries: list, concurrency, timeout, scan_mode, ports, session_id: sessionId }),
         });
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${resp.status}`);
+        }
         const data = await resp.json();
         sessionId = data.session_id;
         localStorage.setItem('ani_session', sessionId);
@@ -728,16 +828,20 @@ async function startScan(list) {
         scanning     = true;
         results      = [];
         filteredSorted = [];
+        _seenIPs     = new Set();
         scannedCount = successCount = failCount = 0;
         totalCount   = list.length;
         scanState    = 'running';
         $id('waitingState').style.display = 'none';
         $id('parseBtn').disabled = true;
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
         updateStats(); triggerSort(); updateScanButton();
         showToast(t().scanStart(list.length, concurrency), 'info');
         connectStream(sessionId);
-    } catch {
-        showToast(t().serverErr, 'error');
+    } catch(err) {
+        unlockConfig();
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+        showToast(`❌ ${err.message || t().serverErr}`, 'error');
     }
 }
 
@@ -754,6 +858,7 @@ async function stopScan() {
             body:    JSON.stringify({ session_id: sessionId }),
         });
     }
+    unlockConfig();
     $id('parseBtn').disabled = false;
     updateScanButton(); updateProgressLabel();
     showToast(t().scanStop, 'warn');
@@ -763,6 +868,7 @@ function finishScan() {
     scanning  = false;
     scanState = 'done';
     if (evtSource) { evtSource.close(); evtSource = null; }
+    unlockConfig();
     $id('parseBtn').disabled = false;
     updateScanButton(); triggerSort();
     const aliveCount = results.filter(r => r.tcp?.ok || r.tls?.ok || r.udp?.ok).length;
@@ -1128,11 +1234,14 @@ window.loadHistoryItem   = loadHistoryItem;
 // ── Cloudflare IP Import ──────────────────────────
 async function importCloudflareIPs() {
     showToast(t().cfImporting, 'info');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000); // 10s timeout
     try {
         const [v4resp, v6resp] = await Promise.all([
-            fetch('https://www.cloudflare.com/ips-v4'),
-            fetch('https://www.cloudflare.com/ips-v6'),
+            fetch('https://www.cloudflare.com/ips-v4', { signal: controller.signal }),
+            fetch('https://www.cloudflare.com/ips-v6', { signal: controller.signal }),
         ]);
+        clearTimeout(timer);
         const v4text = v4resp.ok ? await v4resp.text() : '';
         const v6text = v6resp.ok ? await v6resp.text() : '';
         const combined = [v4text, v6text].join('\n').trim();
@@ -1143,7 +1252,12 @@ async function importCloudflareIPs() {
         const lines = combined.split('\n').filter(Boolean);
         showToast(t().cfImportDone(lines.length), 'success');
     } catch (e) {
-        showToast(t().cfImportErr, 'error');
+        clearTimeout(timer);
+        if (e.name === 'AbortError') {
+            showToast('❌ Request timed out — check network connection', 'error');
+        } else {
+            showToast(t().cfImportErr + ': ' + (e.message || 'unknown error'), 'error');
+        }
     }
 }
 
