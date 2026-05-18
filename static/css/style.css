@@ -305,6 +305,18 @@ input[type="file"]::-webkit-file-upload-button:hover {
     color: var(--text);
 }
 
+/* Disabled state during scan */
+.mode-option input:disabled + span,
+.port-option input:disabled + span {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.mode-option:has(input:disabled),
+.port-option:has(input:disabled) {
+    cursor: not-allowed;
+}
+
 /* ── Buttons ──────────────────────────────────── */
 .btn {
     display: flex;
@@ -1027,7 +1039,7 @@ th.sortable.asc::after {
     display: inline-block;
     width: 8px;
     height: 8px;
-    border-radius: 50%;
+    border-radius: 2px;   /* square with slight rounding */
     vertical-align: middle;
     flex-shrink: 0;
     box-shadow: 0 0 4px currentColor;
