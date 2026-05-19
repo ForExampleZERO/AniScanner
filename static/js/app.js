@@ -9,7 +9,7 @@
 
 'use strict';
 
-const VERSION = '3.0';
+const VERSION = '4.0';
 
 // ── i18n ──────────────────────────────────────────
 const LANG = {
@@ -205,6 +205,7 @@ function getSortValue(r, key) {
         case 'latency': return r.latency?.avg ?? r.tls?.ms ?? 999999;
         case 'score':   return r.score?.points ?? 0;
         case 'verdict': return (r.score?.verdict || '').toLowerCase();
+        case 'http_status': return r.http?.status_code ?? 9999;
         default:        return '';
     }
 }
@@ -252,6 +253,7 @@ function getWorker() {
         sortWorker.onmessage = e => {
             filteredSorted = e.data.filtered;
             workerBusy = false;
+            invalidateVsCache();
             renderVirtualTable();
             updateFilterCount();
             // If another sort was queued, run it now
@@ -455,6 +457,44 @@ function cdnHtml(provider) {
     return `<span class="cdn-tag">${icon} ${provider}</span>`;
 }
 
+// ── HTTP status renderer ──────────────────────────
+const HTTP_STATUS_COLORS = {
+    2: '#4ade80',   // 2xx green
+    3: '#38bdf8',   // 3xx blue
+    4: '#facc15',   // 4xx yellow
+    5: '#f87171',   // 5xx red
+};
+
+function httpStatusHtml(http) {
+    if (!http) return '<span class="badge badge-dash">—</span>';
+    const code = http.status_code;
+    if (!code) {
+        const err = http.err || 'no response';
+        return `<span class="badge badge-fail" title="${err}">—</span>`;
+    }
+    const cat   = Math.floor(code / 100);
+    const color = HTTP_STATUS_COLORS[cat] || '#94a3b8';
+    const ttfb  = http.ttfb_ms ? ` · ${http.ttfb_ms}ms` : '';
+    const ver   = http.http_version && http.http_version !== '?' ? ` ${http.http_version}` : '';
+    const waf   = http.waf ? ` · ${http.waf}` : '';
+    const title = `${code} ${http.status_text || ''}${ver}${ttfb}${waf}\nRedirects: ${(http.redirect_chain||[]).join(' → ') || 'none'}`;
+    const secIcons = httpSecurityIcons(http.security);
+    return `<div class="http-cell">
+        <span class="http-code" style="color:${color}" title="${title}">${code}</span>
+        <span class="http-ttfb">${http.ttfb_ms ? http.ttfb_ms + 'ms' : ''}</span>
+        ${secIcons}
+    </div>`;
+}
+
+function httpSecurityIcons(security) {
+    if (!security) return '';
+    const icons = [];
+    if (security.hsts?.present)             icons.push('<span class="sec-icon sec-hsts" title="HSTS enabled">🔒</span>');
+    if (security.csp?.present)              icons.push('<span class="sec-icon sec-csp"  title="CSP present">🛡</span>');
+    if (security.x_frame_options?.present)  icons.push('<span class="sec-icon sec-xfo"  title="X-Frame-Options">🖼</span>');
+    return icons.join('');
+}
+
 function latencyHtml(tls, latency) {
     // Show ONLY multi-probe TCP latency (avg of 3 probes) — never TLS RTT
     // This ensures Latency differs from Ping (which shows first TCP connect ms)
@@ -482,6 +522,7 @@ function buildRow(r, i, showTcp, showUdp) {
     const tcp  = r.tcp  || {};
     const tls  = r.tls  || {};
     const sc   = r.score || {};
+    const http = r.http  || null;
 
     const tr = document.createElement('tr');
     tr.style.height = ROW_HEIGHT + 'px';
@@ -515,6 +556,7 @@ function buildRow(r, i, showTcp, showUdp) {
     tr.appendChild(td(tlsVerHtml(tls)));
     tr.appendChild(td(sniHtml(tls)));
     tr.appendChild(td(certHtml(tls)));
+    tr.appendChild(td(httpStatusHtml(http)));
     tr.appendChild(td(cdnHtml(r.provider)));
     tr.appendChild(td(latencyHtml(tls, r.latency)));
     tr.appendChild(td(scoreHtml(sc)));
@@ -523,20 +565,43 @@ function buildRow(r, i, showTcp, showUdp) {
     return tr;
 }
 
-// ── Virtual Scroll ────────────────────────────────
+// ── Virtual Scroll (keyed-diff, lag-free) ────────
+// Keeps a Map of rendered row elements keyed by data index.
+// On each frame only adds/removes rows that entered/left the window.
+// Zero full-tbody wipe → no layout thrash even at 10 000 rows.
+
+const _vsRowCache = new Map();   // index → <tr> element
+let   _vsLastStart = -1;
+let   _vsLastEnd   = -1;
+
 function renderVirtualTable() {
-    const wrap   = $id('tableWrap');
-    const tbody  = $id('resultBody');
+    const wrap  = $id('tableWrap');
+    const tbody = $id('resultBody');
     if (!wrap || !tbody) return;
 
-    const total  = filteredSorted.length;
+    const total = filteredSorted.length;
+
+    // Ensure spacers exist (created once)
+    let spacerT = $id('vsSpacerTop');
+    let spacerB = $id('vsSpacerBot');
+    if (!spacerT) {
+        spacerT = document.createElement('tr');
+        spacerT.id = 'vsSpacerTop';
+        tbody.prepend(spacerT);
+    }
+    if (!spacerB) {
+        spacerB = document.createElement('tr');
+        spacerB.id = 'vsSpacerBot';
+        tbody.append(spacerB);
+    }
+
     if (total === 0) {
-        tbody.innerHTML = '';
-        // spacer clean
-        const spacerT = $id('vsSpacerTop');
-        const spacerB = $id('vsSpacerBot');
-        if (spacerT) spacerT.style.height = '0px';
-        if (spacerB) spacerB.style.height = '0px';
+        // Evict all cached rows
+        _vsRowCache.forEach(tr => tr.remove());
+        _vsRowCache.clear();
+        _vsLastStart = _vsLastEnd = -1;
+        spacerT.style.height = '0px';
+        spacerB.style.height = '0px';
         const aliveTotal = results.filter(r => r.tcp?.ok || r.tls?.ok || r.udp?.ok).length;
         $id('waitingState').style.display = aliveTotal === 0 ? 'flex' : 'none';
         return;
@@ -554,35 +619,63 @@ function renderVirtualTable() {
     const visibleRows = Math.ceil(vsContainerH / ROW_HEIGHT);
     const endIdx      = Math.min(total - 1, startIdx + visibleRows + BUFFER_ROWS * 2);
 
-    // Spacers
-    let spacerT = $id('vsSpacerTop');
-    let spacerB = $id('vsSpacerBot');
-    if (!spacerT) {
-        spacerT = document.createElement('tr');
-        spacerT.id = 'vsSpacerTop';
-        tbody.prepend(spacerT);
-    }
-    if (!spacerB) {
-        spacerB = document.createElement('tr');
-        spacerB.id = 'vsSpacerBot';
-        tbody.append(spacerB);
-    }
-
     spacerT.style.height = (startIdx * ROW_HEIGHT) + 'px';
-    spacerB.style.height = ((total - 1 - endIdx) * ROW_HEIGHT) + 'px';
+    spacerB.style.height = Math.max(0, (total - 1 - endIdx) * ROW_HEIGHT) + 'px';
 
-    // Remove existing data rows
-    Array.from(tbody.querySelectorAll('tr[data-vs]')).forEach(r => r.remove());
+    // Short-circuit: same window, no sort/filter change
+    if (startIdx === _vsLastStart && endIdx === _vsLastEnd) return;
 
-    const frag = document.createDocumentFragment();
+    // Remove rows that scrolled out of window
+    _vsRowCache.forEach((tr, idx) => {
+        if (idx < startIdx || idx > endIdx) {
+            tr.remove();
+            _vsRowCache.delete(idx);
+        }
+    });
+
+    // Add rows that entered the window (insert in order after spacerT)
+    // Collect new rows into a fragment, then insert once.
+    const frag  = document.createDocumentFragment();
+    const toAdd = [];
     for (let i = startIdx; i <= endIdx; i++) {
-        const row = buildRow(filteredSorted[i], i, showTcp, showUdp);
-        row.setAttribute('data-vs', i);
-        frag.appendChild(row);
+        if (!_vsRowCache.has(i)) {
+            const row = buildRow(filteredSorted[i], i, showTcp, showUdp);
+            row.setAttribute('data-vs', i);
+            _vsRowCache.set(i, row);
+            toAdd.push({ i, row });
+        }
     }
 
-    // Insert after spacerTop
-    spacerT.after(frag);
+    if (toAdd.length > 0) {
+        // Insert each new row at the correct position relative to existing rows.
+        // Inserting after spacerT but before any row with a higher index keeps order.
+        for (const { i, row } of toAdd) {
+            // Find first cached row with index > i that is already in DOM
+            let insertBefore = null;
+            for (let j = i + 1; j <= endIdx; j++) {
+                if (_vsRowCache.has(j) && _vsRowCache.get(j).parentNode === tbody) {
+                    insertBefore = _vsRowCache.get(j);
+                    break;
+                }
+            }
+            if (insertBefore) {
+                tbody.insertBefore(row, insertBefore);
+            } else {
+                // Insert before spacerBot
+                tbody.insertBefore(row, spacerB);
+            }
+        }
+    }
+
+    _vsLastStart = startIdx;
+    _vsLastEnd   = endIdx;
+}
+
+// Invalidate keyed cache when data changes (sort/filter)
+function invalidateVsCache() {
+    _vsRowCache.forEach(tr => tr.remove());
+    _vsRowCache.clear();
+    _vsLastStart = _vsLastEnd = -1;
 }
 
 function scheduleVsRender() {
@@ -942,7 +1035,7 @@ function downloadResults(mode) {
         content = sorted.map(r => r.ip).join(CRLF) + CRLF;
     } else {
         content  = '# AniScanner Advanced Export' + CRLF;
-        content += '# IP • SNI/CN • Ping(ms) • Latency(avg) • TCP • UDP • TLS_Ver • Issuer • DaysLeft • CDN • Score • Verdict' + CRLF + CRLF;
+        content += '# IP • SNI/CN • Ping(ms) • Latency(avg) • TCP • UDP • TLS_Ver • Issuer • DaysLeft • HTTP_Status • TTFB(ms) • HTTP_Ver • WAF • CDN • Score • Verdict' + CRLF + CRLF;
         for (const r of sorted) {
             content += [
                 r.ip,
@@ -954,6 +1047,10 @@ function downloadResults(mode) {
                 r.tls?.tls_ver   || '',
                 r.tls?.issuer    || '',
                 r.tls?.days_left ?? '',
+                r.http?.status_code ?? '',
+                r.http?.ttfb_ms     ?? '',
+                r.http?.http_version || '',
+                r.http?.waf         || '',
                 r.provider  || '',
                 r.score?.points  ?? 0,
                 r.score?.verdict || '',
