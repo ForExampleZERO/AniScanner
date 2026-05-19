@@ -1275,3 +1275,34 @@ th.sortable.desc::after {
 .hist-total { color: #cbd5e1; flex: 1; text-align: right; }
 .hist-online{ flex: 1; text-align: right; }
 .hist-mode  { color: #64748b; flex: 1; text-align: right; }
+
+/* ── HTTP Status Cell ────────────────────────────── */
+.http-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.http-code {
+    font-weight: 700;
+    font-size: 13px;
+    font-family: var(--font-mono, monospace);
+    letter-spacing: .03em;
+    cursor: default;
+}
+
+.http-ttfb {
+    font-size: 10px;
+    color: #64748b;
+}
+
+.sec-icon {
+    font-size: 10px;
+    cursor: default;
+    opacity: .85;
+}
+
+.sec-icon:hover {
+    opacity: 1;
+}
